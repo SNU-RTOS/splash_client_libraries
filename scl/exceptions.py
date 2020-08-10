@@ -1,35 +1,50 @@
 
-
-class TimingViolationException(Exception):
+class RuntimeException(Exception):
     def __init__(self, *args):
-        Exception.__init__(self, 'Timing violation violation', *args)
+        Exception.__init__(self, 'Runtime Exception', *args)
+
+
+class SetupException(Exception):
+    def __init__(self, *args):
+        Exception.__init__(self, 'Setup Exception', *args)
+
+
+class TimingViolationException(RuntimeException):
+    def __init__(self, *args):
+        RuntimeException.__init__(self, 'Timing violation', *args)
 
 
 class FreshnessConstraintViolationException(TimingViolationException):
     def __init__(self, *args):
-        Exception.__init__(self, 'Freshness constriant violation', *args)
+        TimingViolationException.__init__(
+            self, 'Freshness constriant violation', *args)
 
 
-class DataAbsenceException(Exception):
+class DataAbsenceException(RuntimeException):
     def __init__(self, *args):
-        Exception.__init__(self, 'Data absence', *args)
+        RuntimeException.__init__(self, 'Data absence', *args)
 
 
-class DataCorruptionException(Exception):
+class DataCorruptionException(RuntimeException):
     def __init__(self, *args):
-        Exception.__init__(self, 'Data corruption', *args)
+        RuntimeException.__init__(self, 'Data corruption', *args)
 
 
 class InvalidStreamDataException(DataCorruptionException):
     def __init__(self, *args):
-        Exception.__init__(self, 'Invalid stream data', *args)
+        DataCorruptionException.__init__(self, 'Invalid stream data', *args)
 
 
-class InvalidEvent(DataCorruptionException):
+class InvalidEventException(DataCorruptionException):
     def __init__(self, *args):
-        Exception.__init__(self, 'Invalid event', *args)
+        DataCorruptionException.__init__(self, 'Invalid event', *args)
 
 
-class InvalidModeChange(DataCorruptionException):
+class InvalidModeChangeException(DataCorruptionException):
     def __init__(self, *args):
-        Exception.__init__(self, 'Invalid mode change', *args)
+        DataCorruptionException.__init__(self, 'Invalid mode change', *args)
+
+
+class InvalidUsageException(SetupException):
+    def __init__(self, *args):
+        SetupException.__init__(self, 'Invalid usage', *args)
