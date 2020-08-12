@@ -1,36 +1,51 @@
 from rclpy.qos import QoSProfile
+from .impl.singleton import Singleton
 
 
-class StreamInputPort():
-    def __init__(self, component, msg_type, channel, callback):
-        self.__component = component
-        self.__msg_type = msg_type
-        self.__channel = channel
-        self.__callback = callback
-        self.__subscription = self.__component.create_subscription(
-            self.__msg_type, self.__channel, self.__callback, 1)
-        self.__data_queue = []
+class StreamPort(Singleton):
+    def __init__(self, name, parent):
+        self.name = name
+        self.parent = parent
+        self._namespace = None
+
+    def set_channel(self, channel):
+        self._channel = channel
+
+    def set_msg_type(self, msg_type):
+        self._msg_type = msg_type
+
+    def set_namespace(self, namespace):
+        self._namespace = namespace
+
+
+class StreamInputPort(StreamPort):
+    def __init__(self, name, parent):
+        super().__init__(name, parent)
+        self._data_queue = []
+
+    def attach(self):
+        topic = self._namespace + "/" + self._channel if self._namespace else self._channel
+        self._subscription = self.parent.create_subscription(
+            self._msg_type, topic, self._callback, 1)
+
+    def set_callback(self, callback):
+        self._callback = callback
 
     def set_freshness_constraint(self, freshness_constraint):
         self.freshness_constraint = freshness_constraint
 
-    def get_type(self):
-        return self.__msg_type
 
+class StreamOutputPort(StreamPort):
+    def __init__(self, name, parent):
+        super().__init__(name, parent)
 
-class StreamOutputPort():
-    def __init__(self, component, msg_type, channel):
-        self.__component = component
-        self.__msg_type = msg_type
-        self.__channel = channel
-        self.__publisher = self.__component.create_publisher(
-            self.__msg_type, self.__channel, 1)
+    def attach(self):
+        topic = self._namespace + "/" + self._channel if self._namespace else self._channel
+        self._publisher = self.parent.create_publisher(
+            self._msg_type, topic, 1)
 
     def set_rate_constraint(self, rate_constraint):
         self.rate_constraint = rate_constraint
 
-    def get_type(self):
-        return self.__msg_type
-
     def write(self, msg):
-        self.__publisher.publish(msg)
+        self._publisher.publish(msg)
