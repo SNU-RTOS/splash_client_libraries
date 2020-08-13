@@ -12,8 +12,8 @@ class Factory(Singleton):
         parent = self.parent
         namespace = self.mode + "/" + self.name if self.mode else self.name
         if(parent):
-            name = parent.get_namespace() + "/" + name
-        return name
+            namespace = parent.get_namespace() + "/" + namespace
+        return namespace
 
     def set_mode_configuration(self, mode_configuration):
         self.mode_configuration = mode_configuration
