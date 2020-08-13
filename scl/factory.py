@@ -2,16 +2,18 @@ from .impl.singleton import Singleton
 
 
 class Factory(Singleton):
-    def __init__(self, name, parent, mode_configuration, mode):
+    def __init__(self, name, parent, mode):
         self.name = name
         self.parent = parent
-        self.mode_configuration = mode_configuration
         self.mode = mode
+        self.mode_configuration = None
 
     def get_namespace(self):
         parent = self.parent
-        name = self.name
-        name = self.mode + "/" + name if self.mode else name
+        namespace = self.mode + "/" + self.name if self.mode else self.name
         if(parent):
             name = parent.get_namespace() + "/" + name
         return name
+
+    def set_mode_configuration(self, mode_configuration):
+        self.mode_configuration = mode_configuration
