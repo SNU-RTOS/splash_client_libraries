@@ -5,7 +5,7 @@ from .channel import StreamInputPort, StreamOutputPort
 from .clink import EventInputPort, EventOutputPort, ModeChangeOutputPort
 from .impl.singleton import Singleton
 from .exceptions import *
-
+import srl
 
 class Component(Singleton, Node):
     def __init__(self, name, factory, mode):
@@ -15,13 +15,17 @@ class Component(Singleton, Node):
         self._stream_input_ports = {}
         self._stream_output_ports = {}
         self._event_input_ports = {}
+        self.ros_context = None
         namespace = factory.get_namespace() if factory else ""
         self._namespace = namespace + '/' + \
             mode.lower().replace(" ", "_") if mode else namespace
+    
+    def set_context(self, context):
+        self.ros_context = context
 
     def set_links(self, links):
         self.links = links
-        super().__init__(self.name, namespace=self._namespace)
+        super().__init__(self.name, context=self.ros_context, namespace=self._namespace)
 
     def get_namespace(self):
         return self._namespace
@@ -59,7 +63,7 @@ class Component(Singleton, Node):
         self._event_input_ports[event] = EventInputPort(
             self, srv, event, callback)
 
-    def get_stream_output_port(channel):
+    def get_stream_output_port(self, channel):
         return self._stream_output_ports[channel]
 
     def setup(self):
@@ -67,7 +71,6 @@ class Component(Singleton, Node):
 
     def run(self):
         pass
-
 
 class FusionOperator(Component):
     class FusionRule():

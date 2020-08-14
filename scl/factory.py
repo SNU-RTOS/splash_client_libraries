@@ -1,6 +1,5 @@
 from .impl.singleton import Singleton
 
-
 class Factory(Singleton):
     def __init__(self, name, parent, mode):
         self.name = name
@@ -17,3 +16,6 @@ class Factory(Singleton):
 
     def set_mode_configuration(self, mode_configuration):
         self.mode_configuration = mode_configuration
+        # # rclpy.init()
+        # # rclpy.create_node(node_name="splash_mode_manager")
+        # self.node = Node(name="splash_mode_manager")
