@@ -2,30 +2,39 @@ import json
 from rclpy.node import Node
 from std_msgs.msg import String
 from .channel import StreamInputPort, StreamOutputPort
-from .clink import EventInputPort, EventOutputPort, ModeChangeOutputPort
+from .clink import EventInputPort, EventOutputPort, ModeChangeInputPort, ModeChangeOutputPort
 from .impl.singleton import Singleton
 from .exceptions import *
 import srl
 
-class Component(Singleton, Node):
+class Component(Node, metaclass=Singleton):
     def __init__(self, name, factory, mode):
         self.name = name
         self.factory = factory
         self.mode = mode
+        self._current_mode = None
         self._stream_input_ports = {}
         self._stream_output_ports = {}
+        self._mode_input_port = None
         self._event_input_ports = {}
-        self.ros_context = None
+        self.build_unit = None
         namespace = factory.get_namespace() if factory else ""
         self._namespace = namespace + '/' + \
             mode.lower().replace(" ", "_") if mode else namespace
-    
-    def set_context(self, context):
-        self.ros_context = context
-
+    def set_current_mode(self, mode):
+        self._current_mode = mode
+    def get_current_mode(self, mode):
+        return self._current_mode
+    def set_build_unit(self, build_unit):
+        self.build_unit = build_unit
+        super().__init__(self.name, context=self.build_unit.context, namespace=self._namespace)
+        
+        if self.factory.mode_configuration:
+            mode_info = next((item for item in self.factory.mode_configuration["mode_list"] if item["name"] == self.mode), None)
+            if mode_info:
+                self.mode_input_port = ModeChangeInputPort(self)
     def set_links(self, links):
         self.links = links
-        super().__init__(self.name, context=self.ros_context, namespace=self._namespace)
 
     def get_namespace(self):
         return self._namespace

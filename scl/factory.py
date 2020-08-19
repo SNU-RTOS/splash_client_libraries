@@ -1,6 +1,6 @@
 from .impl.singleton import Singleton
 
-class Factory(Singleton):
+class Factory(metaclass=Singleton):
     def __init__(self, name, parent, mode):
         self.name = name
         self.parent = parent
