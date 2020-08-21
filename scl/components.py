@@ -1,4 +1,4 @@
-import json
+import json, time
 from rclpy.node import Node
 from std_msgs.msg import String
 from .channel import StreamInputPort, StreamOutputPort
@@ -139,13 +139,20 @@ class FusionOperator(Component):
                 self._stream_output_ports.append(port)
 
     def set_fusion_rule(self, fusion_rule):
-        m_ports = fusion_rule["mandatory_ports"]
-        o_ports = fusion_rule["optional_ports"]
+        m_ports = self._get_ports_from_key(fusion_rule["mandatory_ports"])
+        o_ports = self._get_ports_from_key(fusion_rule["optional_ports"])
         o_ports_threshhold = fusion_rule["optional_ports_threshold"]
         correlation = fusion_rule["correlation"]
         self._set_fusion_rule(m_ports, o_ports,
                               o_ports_threshhold, correlation)
-
+    def _get_ports_from_key(self, ports):
+        new_ports = []
+        for port in ports:
+            port = port.lower().replace(" ", "_")
+            for link in self.links:
+                if link.dst.name == port:
+                    new_ports.append(link.dst)
+        return new_ports
     def _set_fusion_rule(self, m_ports, o_ports, o_ports_threshhold, correlation):
         self._fusion_rule = self.FusionRule(
             m_ports, o_ports, o_ports_threshhold, correlation)
@@ -154,11 +161,11 @@ class FusionOperator(Component):
         print("check_and_fusion")
         if not channel in self._queues_for_each_input_port.keys():
             self._queues_for_each_input_port[channel] = []
-        self._queues_for_each_input_port[channel].append(msg)
+        self._queues_for_each_input_port[channel].append({"message": msg, "time": time.time()})
         if self._fusion_rule.check(self._queues_for_each_input_port):
             data = {"length": len(self._queues_for_each_input_port.keys())}
             for key, value in self._queues_for_each_input_port.items():
-                data[key] = convert_ros_message_to_dictionary(value.pop(0))
+                data[key] = convert_ros_message_to_dictionary(value.pop(0)["message"])
                 
             print(data)
             data_encoded = json.dumps(data)
