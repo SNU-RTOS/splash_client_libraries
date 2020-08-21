@@ -6,6 +6,9 @@ class StreamPort():
         self.parent = parent
         self._namespace = None
 
+    def get_channel(self):
+        return self._channel
+        
     def set_channel(self, channel):
         self._channel = channel
 
