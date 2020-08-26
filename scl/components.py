@@ -5,6 +5,7 @@ from .channel import StreamInputPort, StreamOutputPort
 from .clink import EventInputPort, EventOutputPort, ModeChangeInputPort, ModeChangeOutputPort
 from .exceptions import *
 from .impl.msg_converter import convert_ros_message_to_dictionary
+from splash_interfaces.srv import UnregisterMode
 class Component(Node):
     def __init__(self, name, factory, mode):
         self.name = name
@@ -20,6 +21,15 @@ class Component(Node):
         self._namespace = namespace + '/' + \
             mode.lower().replace(" ", "_") if mode else namespace
 
+    def destroy_node(self):
+        if self.mode is not None:
+            self.get_logger().info('Mode unregistration...')
+            _cli = self.create_client(UnregisterMode, '/unregister_splash_mode')
+            _req = UnregisterMode.Request()
+            _req.factory = self.factory.name
+            future = _cli.call_async(_req)
+        return super().destroy_node()
+        
     def set_current_mode(self, mode):
         self._current_mode = mode
 
@@ -34,7 +44,7 @@ class Component(Node):
             self.attach_modechange_input_port()
 
     def _create_node(self):
-        super().__init__(self.name, context=self.build_unit.context, namespace=self._namespace)
+        super().__init__(self.name, context=self.build_unit, namespace=self._namespace)
         
         
     def set_links(self, links):
@@ -107,9 +117,6 @@ class FusionOperator(Component):
             self.optional_ports_threshold = o_ports_threshhold
             self.correlation = correlation
 
-        def check(self, queues_for_each_input_port):
-            return True
-
     def __init__(self, name, factory, mode):
         super().__init__(name, factory, mode)
         self._fusion_rule = None
@@ -127,6 +134,8 @@ class FusionOperator(Component):
                 if not channel in self._stream_input_ports.keys():
                     self._stream_input_ports[channel] = []
                 self._stream_input_ports[channel].append(port)
+                
+                self._queues_for_each_input_port[channel] = []
 
     def attach_stream_output_port(self, channel):
         for link in self.links:
@@ -141,8 +150,8 @@ class FusionOperator(Component):
     def set_fusion_rule(self, fusion_rule):
         m_ports = self._get_ports_from_key(fusion_rule["mandatory_ports"])
         o_ports = self._get_ports_from_key(fusion_rule["optional_ports"])
-        o_ports_threshhold = fusion_rule["optional_ports_threshold"]
-        correlation = fusion_rule["correlation"]
+        o_ports_threshhold = int(fusion_rule["optional_ports_threshold"])
+        correlation = int(fusion_rule["correlation"])
         self._set_fusion_rule(m_ports, o_ports,
                               o_ports_threshhold, correlation)
     def _get_ports_from_key(self, ports):
@@ -158,20 +167,115 @@ class FusionOperator(Component):
             m_ports, o_ports, o_ports_threshhold, correlation)
     
     def _check_and_fusion(self, msg, channel):
-        print("check_and_fusion")
-        if not channel in self._queues_for_each_input_port.keys():
-            self._queues_for_each_input_port[channel] = []
+        print("=====================================")
+        print("check_and_fusion: ", channel)
         self._queues_for_each_input_port[channel].append({"message": msg, "time": time.time()})
-        if self._fusion_rule.check(self._queues_for_each_input_port):
-            data = {"length": len(self._queues_for_each_input_port.keys())}
-            for key, value in self._queues_for_each_input_port.items():
-                data[key] = convert_ros_message_to_dictionary(value.pop(0)["message"])
-                
-            print(data)
-            data_encoded = json.dumps(data)
+        valid_input_data = self._find_valid_input_data(self._fusion_rule, self._queues_for_each_input_port)
+        if valid_input_data:
+            print(valid_input_data)
+            data_encoded = json.dumps(valid_input_data)
             new_msg = String()
             new_msg.data = data_encoded
             for port in self._stream_output_ports:
                 port.write(new_msg)
         else:
             pass
+        print("=====================================")
+    def _find_valid_input_data(self, fusion_rule, queues_for_each_input_port):
+        print("FIND VALID INPUT DATA")
+        index_list = [None] * len(queues_for_each_input_port.keys())
+        i = 0
+        optional_ports_count = 0
+        # mandatory ports check
+        print("MANDATORY PORTS CHECK", end=": ")
+
+        for mandatory_port in fusion_rule.mandatory_ports:
+            queue = next((item for key, item in queues_for_each_input_port.items() if mandatory_port.get_channel() == key), False)
+            if not queue or len(queue) == 0:
+                print("False")
+                return None
+
+        print("True")
+        for channel, queue in queues_for_each_input_port.items():
+            if len(queue) > 0:
+                index_list[i] = 0
+                # count optional ports
+                if next((item for item in fusion_rule.optional_ports if item.get_channel() == channel), False):
+                    optional_ports_count = optional_ports_count + 1
+            i = i + 1
+        # num of optional ports should greater than threshold
+        print("NUM OF OPTIONAL PORTS", end=" ")
+        if optional_ports_count < fusion_rule.optional_ports_threshold:
+            print("LESS THAN THRESHOLD")
+            return None
+        print("GREATER THAN TRESHOLD")
+        flag = True
+        while flag:
+            flag = False
+            for j in range(0, i):
+                if index_list[j] is not None:
+                    flag = True
+            if self._is_valid_data(fusion_rule, queues_for_each_input_port, index_list):
+                return self._build_data(queues_for_each_input_port, index_list)
+            k, last_flag = self._get_earlist_index(queues_for_each_input_port, index_list)
+
+            if last_flag:
+                index_list[k] = index_list[k] + 1
+            else:   
+                index_list[k] = None
+        return None
+
+    def _is_valid_data(self, fusion_rule, queues_for_each_input_port, index_list):
+        print("CHECK IF IS VALID INPUT DATA")
+
+        i = 0
+        cur_data_list = []
+        for key, queue in queues_for_each_input_port.items():
+            if index_list[i] is not None:
+                cur_data_list.append(queue[index_list[i]])
+            i = i + 1
+        print(cur_data_list)
+        for data in cur_data_list:
+            for data2 in cur_data_list:
+                if data == data2: continue
+                time_diff_ms = abs(data["time"] - data2["time"]) * 1000
+                print(time_diff_ms)
+                if  time_diff_ms > fusion_rule.correlation:
+                    print("False")
+                    return False
+        print("True")
+        return True
+    
+    def _build_data(self, queues_for_each_input_port, index_list):
+        print("BUILD DATA", end=": ")
+
+        i = 0
+        data = {}
+        for key, queue in queues_for_each_input_port.items():
+            data[key] = None
+            if index_list[i] is not None:
+                data[key] = convert_ros_message_to_dictionary(queue[index_list[i]]["message"])
+                if len(queue) == index_list[i] + 1:
+                    queue = []
+                else:
+                    queue = queue[index_list[i]+1:]
+                queues_for_each_input_port[key] = queue
+            i = i + 1
+        
+        print(data)
+        return data
+    
+    def _get_earlist_index(self, queues_for_each_input_port, index_list):
+        print("GET EARLIST INDEX")
+        earlist_index = None
+        queue_list = [] 
+        flag = True
+        for key, queue in queues_for_each_input_port.items():
+            queue_list.append(queue)
+        for i, queue in enumerate(queue_list, start=0):
+            if index_list[i] is not None:
+                if earlist_index is None or queue[index_list[earlist_index]]["time"] > queue[index_list[i]]["time"]:
+                    earlist_index = i
+        if len(queue_list[earlist_index]) == index_list[earlist_index] + 1:
+            flag = False
+        return earlist_index, flag
