@@ -40,6 +40,7 @@ class StreamInputPort(StreamPort):
 
     def _check_mode_and_execute_callback(self, msg):
         if self.parent.mode == self.parent.get_current_mode():
+            
             if self._args:
                 self._callback(msg, self._args[0])
             else:
@@ -65,10 +66,13 @@ class StreamOutputPort(StreamPort):
         return self._rate_constraint
 
     def write(self, msg):
-        if self._rate_constraint > 0:
-            self._rate_controller.push(msg)
+        if self.parent.mode == self.parent.get_current_mode():
+            if self._rate_constraint > 0:
+                self._rate_controller.push(msg)
+            else:
+                self._publisher.publish(msg)
         else:
-            self._publisher.publish(msg)
+            pass
 
     def get_publisher(self):
         return self._publisher
