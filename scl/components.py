@@ -6,6 +6,8 @@ from .clink import EventInputPort, EventOutputPort, ModeChangeInputPort, ModeCha
 from .exceptions import *
 from .impl.msg_converter import convert_ros_message_to_dictionary
 from splash_interfaces.srv import UnregisterMode
+import inspect
+
 class Component(Node):
     def __init__(self, name, factory, mode):
         self.name = name
@@ -17,6 +19,7 @@ class Component(Node):
         self._mode_input_port = None
         self._event_input_ports = {}
         self.build_unit = None
+        self.freshness = None
         namespace = factory.get_namespace() if factory else ""
         self._namespace = namespace + '/' + \
             mode.lower().replace(" ", "_") if mode else namespace
@@ -29,7 +32,7 @@ class Component(Node):
             _req.factory = self.factory.name
             future = _cli.call_async(_req)
         return super().destroy_node()
-        
+
     def set_current_mode(self, mode):
         self._current_mode = mode
 
@@ -44,7 +47,7 @@ class Component(Node):
             self.attach_modechange_input_port()
 
     def _create_node(self):
-        super().__init__(self.name, context=self.build_unit, namespace=self._namespace)
+        super().__init__(self.name, context=self.build_unit.context, namespace=self._namespace)
         
         
     def set_links(self, links):
@@ -94,8 +97,19 @@ class Component(Node):
             self, event, callback)
 
     def write(self, channel, msg):
+        curframe = inspect.currentframe()
+        calframe = inspect.getouterframes(curframe, 2)
+        caller_name = calframe[1][3]
+        source_msg = None
+        for c, port_list in self._stream_input_ports.items():
+            for port in port_list:
+                if caller_name == port.get_callback().__name__:
+                    source_msg = port.msg_list[0]
+                    break
+            if source_msg:
+                break
         for port in self._stream_output_ports[channel]:
-            port.write(msg)
+            port.write(msg, source_msg)
 
     def trigger_event(self, event):
         pass

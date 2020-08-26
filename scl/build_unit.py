@@ -1,7 +1,7 @@
 from .impl.singleton import Singleton
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.utilities import get_default_context
+
 
 class BuildUnit(metaclass=Singleton):
     def __init__(self):
@@ -20,3 +20,4 @@ class BuildUnit(metaclass=Singleton):
             for component in self.components:
                 component.destroy_node()
             self.executor.shutdown()
+            
