@@ -13,11 +13,13 @@ class ModeChangeInputPort:
 
     def _mode_change_callback(self, msg):
         if self._component.get_current_mode() != msg.data:
+            self._component.get_logger().info("Change mode {} => {}".format(self._component.get_current_mode(), msg.data))
             self._component.set_current_mode(msg.data)
         else:
             pass
 
     def _request_register_mode(self):
+        self._component.get_logger().info('Mode registration...')
         _cli = self._component.create_client(RegisterMode, '/register_splash_mode')
         while not _cli.wait_for_service(timeout_sec=1.0):
             self._component.get_logger().info('service not available, waiting again...')
@@ -26,8 +28,7 @@ class ModeChangeInputPort:
         _req.factory = self._component.factory.name
         _req.mode_configuration = json.dumps(self._component.factory.mode_configuration)
         future = _cli.call_async(_req)
-        
-        
+        self._component.get_logger().info('Mode registration OK')
         
 
 class ModeChangeOutputPort:
