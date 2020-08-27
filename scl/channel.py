@@ -3,7 +3,7 @@ from std_msgs.msg import String, Header
 from .impl.msg_converter import convert_ros_message_to_dictionary, convert_dictionary_to_ros_message
 from splash_interfaces.msg import SplashMessage
 import json
-
+from rclpy.time import Time
 class StreamPort():
     def __init__(self, name, parent):
         self.name = name
@@ -16,6 +16,8 @@ class StreamPort():
     def set_channel(self, channel):
         self._channel = channel
 
+    def get_msg_type(self):
+        return self._msg_type
     def set_msg_type(self, msg_type):
         self._msg_type = msg_type
 
@@ -44,11 +46,19 @@ class StreamInputPort(StreamPort):
 
     def _check_mode_and_execute_callback(self, msg):
         if self.parent.mode == self.parent.get_current_mode():
+            self.parent.get_logger().info(msg.body)
+            self.parent.get_logger().info(msg.header.frame_id)
+            if msg.freshness:
+                self.parent.get_logger().info("freshness: {}".format(msg.freshness))
+                time_exec_ms = (self.parent.get_clock().now().nanoseconds - Time.from_msg(msg.header.stamp).nanoseconds) / 1000000
+                self.parent.get_logger().info("time_exec: {}".format(time_exec_ms))
+                if time_exec_ms > msg.freshness:
+                    return
             self.msg_list.append(msg)
             msg_decoded = json.loads(msg.body)
             msg_converted = convert_dictionary_to_ros_message(self._msg_type, msg_decoded)
             if self._args:
-                self._callback(msg_converted, self._args[0])
+                self._callback(msg, self._args[0])
             else:
                 self._callback(msg_converted)
             self.msg_list.pop(0)
@@ -73,7 +83,7 @@ class StreamOutputPort(StreamPort):
     def get_rate_constraint(self):
         return self._rate_constraint
 
-    def write(self, msg, source_msg):
+    def write(self, msg, source_msg=None):
         if self.parent.mode == self.parent.get_current_mode():
             msg_splash = SplashMessage()
             if source_msg is None:
@@ -84,6 +94,8 @@ class StreamOutputPort(StreamPort):
                     msg_splash.freshness = self.parent.freshness
             else:
                 msg_splash.header = source_msg.header
+                if(source_msg.freshness):
+                    msg_splash.freshness = source_msg.freshness
             msg_splash.body = json.dumps(convert_ros_message_to_dictionary(msg))
             if self._rate_constraint > 0:
                 self._rate_controller.push(msg_splash)
