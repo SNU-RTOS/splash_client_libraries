@@ -39,7 +39,7 @@ python_string_types = [str]
 python_int_types = [int]
 python_float_types = [float]
 ros_primitive_types = ['bool', 'byte', 'char', 'int8', 'uint8', 'int16',
-                       'uint16', 'int32', 'uint32', 'int64', 'uint64',
+                       'uint16', 'int32', 'uint32', 'int64', 'uint64', 'float',
                        'float32', 'float64', 'string']
 ros_time_types = ['time', 'duration']
 ros_header_types = ['Header', 'std_msgs/Header', 'roslib/Header']
