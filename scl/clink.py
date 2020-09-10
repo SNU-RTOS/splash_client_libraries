@@ -32,11 +32,15 @@ class ModeChangeInputPort:
         
 
 class ModeChangeOutputPort:
-    def __init__(self, component, event):
+    def __init__(self, component, factory):
         self._component = component
-        self._event = event
-        self._client = self._component.create_client(event)
-
+        self._factory = factory
+        self._client = self._component.create_client(RequestModeChange, "/request_splash_mode_change")
+    def trigger(self, event):
+        _req = RequestModeChange.Request()
+        _req.factory = self._factory
+        _req.event = event
+        future = self._client.call_async(_req)
 
 class EventInputPort:
     def __init__(self, component, event, callback):
@@ -51,7 +55,11 @@ class EventInputPort:
             pass
 
 class EventOutputPort:
-    def __init__(self, component, srv, event):
+    def __init__(self, component, event):
         self._component = component
         self._event = event
-        self._client = self._component.create_client(srv, event)
+        self._client = self._component.create_client(Trigger, event)
+
+    def trigger(self):
+        _req = Trigger.Request()
+        future = self._client.call_async(_req)

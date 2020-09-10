@@ -18,7 +18,9 @@ class Component(Node):
         self._stream_input_ports = {}
         self._stream_output_ports = {}
         self._mode_input_port = None
+        self._mode_output_ports = {}
         self._event_input_ports = {}
+        self._event_output_ports = {}
         self.build_unit = None
         self.freshness = 500
         namespace = factory.get_namespace() if factory else ""
@@ -57,7 +59,7 @@ class Component(Node):
     def get_namespace(self):
         return self._namespace
 
-    def attach_stream_input_port(self, msg_type, channel, callback):
+    def attach_stream_input_port(self, msg_type=None, channel, callback, from_fusion=False):
         for link in self.links:
             if link.channel == channel:
                 port = link.dst
@@ -85,17 +87,16 @@ class Component(Node):
     def attach_modechange_input_port(self):
         mode_info = next((item for item in self.factory.mode_configuration["mode_list"] if item["name"] == self.mode), None)
         if mode_info:
-            self.mode_input_port = ModeChangeInputPort(self)
+            self._mode_input_port = ModeChangeInputPort(self)
         
-    def attach_modechange_output_port(self, mode):
-        pass
-
-    def attach_event_output_port(self, srv, event):
-        pass
+    def attach_modechange_output_port(self, factory):
+        self._mode_output_ports[factory] = ModeChangeOutputPort(self, factory)
 
     def attach_event_input_port(self, event, callback):
-        self._event_input_ports[event] = EventInputPort(
-            self, event, callback)
+        self._event_input_ports[event] = EventInputPort(self, event, callback)
+
+    def attach_event_output_port(self, event):
+        self._event_output_ports[event]= EventOutputPort(self, event)
 
     def write(self, channel, msg):
         curframe = inspect.currentframe()
@@ -113,10 +114,10 @@ class Component(Node):
             port.write(msg, source_msg)
 
     def trigger_event(self, event):
-        pass
+        self._event_output_ports[event].trigger()
 
-    def trigger_modechange(self, event):
-        pass
+    def trigger_modechange(self, factory, event):
+        self._mode_output_ports[factory].trigger(event)
 
     def setup(self):
         pass
@@ -137,7 +138,7 @@ class FusionOperator(Component):
         self._fusion_rule = None
         self._queues_for_each_input_port = {}
         self._stream_output_ports = []
-    def attach_stream_input_port(self, msg_type, channel):
+    def attach_stream_input_port(self, msg_type=None, channel, from_fusion=False):
         for link in self.links:
             if link.channel == channel:
                 port = link.dst
@@ -202,10 +203,11 @@ class FusionOperator(Component):
             data_encoded = json.dumps(valid_input_data)
             
         else:
-            empty_input_data = {}
-            for c in self._queues_for_each_input_port.keys():
-                empty_input_data[c] = None
-            data_encoded = json.dumps(empty_input_data)
+            return
+            # empty_input_data = {}
+            # for c in self._queues_for_each_input_port.keys():
+            #     empty_input_data[c] = None
+            # data_encoded = json.dumps(empty_input_data)
 
         new_msg = String()
         new_msg.data = data_encoded
