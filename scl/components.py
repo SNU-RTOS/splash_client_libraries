@@ -59,11 +59,15 @@ class Component(Node):
     def get_namespace(self):
         return self._namespace
 
-    def attach_stream_input_port(self, msg_type=None, channel, callback, from_fusion=False):
+    def attach_stream_input_port(self, channel, callback, msg_type=None, from_fusion=False):
         for link in self.links:
             if link.channel == channel:
                 port = link.dst
-                port.set_msg_type(msg_type)
+                if from_fusion:
+                    port.set_msg_type(String)
+                else:
+                    port.set_msg_type(msg_type)
+                port.from_fusion = from_fusion
                 port.set_channel(channel)
                 port.set_callback(callback)
                 port.set_namespace(link.src.parent.get_namespace())
@@ -138,11 +142,15 @@ class FusionOperator(Component):
         self._fusion_rule = None
         self._queues_for_each_input_port = {}
         self._stream_output_ports = []
-    def attach_stream_input_port(self, msg_type=None, channel, from_fusion=False):
+
+    def attach_stream_input_port(self, channel, msg_type=None, from_fusion=False):
         for link in self.links:
             if link.channel == channel:
                 port = link.dst
-                port.set_msg_type(msg_type)
+                if from_fusion:
+                    port.set_msg_type(String)
+                else:
+                    port.set_msg_type(msg_type)
                 port.set_channel(channel)
                 port.set_callback(self._check_and_fusion, (channel,))
                 port.set_namespace(link.src.parent.get_namespace())
@@ -203,6 +211,7 @@ class FusionOperator(Component):
             data_encoded = json.dumps(valid_input_data)
             
         else:
+            # print("==============empty data===============")
             return
             # empty_input_data = {}
             # for c in self._queues_for_each_input_port.keys():
@@ -213,7 +222,7 @@ class FusionOperator(Component):
         new_msg.data = data_encoded
         for port in self._stream_output_ports:
             port.write(new_msg)
-        # print("=====================================")
+        # print("================{}================".format(valid_input_data))
     def _find_valid_input_data(self, fusion_rule, queues_for_each_input_port):
         # print("FIND VALID INPUT DATA")
         index_list = [None] * len(queues_for_each_input_port.keys())

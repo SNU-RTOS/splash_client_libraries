@@ -4,6 +4,9 @@ from .impl.msg_converter import convert_ros_message_to_dictionary, convert_dicti
 from splash_interfaces.msg import SplashMessage
 import json
 from rclpy.time import Time
+
+
+
 class StreamPort():
     def __init__(self, name, parent):
         self.name = name
@@ -28,9 +31,18 @@ class StreamPort():
         return self._namespace
 
 class StreamInputPort(StreamPort):
+    class FusionedObj(object):
+        def __init__(self, d):
+            for key, value in d.items():
+                if isinstance(value, (list, tuple)):
+                    setattr(self, key, [StreamInputPort.FusionedObj(x) if isinstance(x, dict) else x for x in value])
+                else:
+                    setattr(self, key, StreamInputPort.FusionedObj(value) if isinstance(value, dict) else value)
+
     def __init__(self, name, parent):
         super().__init__(name, parent)
         self.msg_list = []
+        self.from_fusion = False
 
     def attach(self):
         topic = self._namespace + "/" + self._channel if self._namespace else self._channel
@@ -60,7 +72,12 @@ class StreamInputPort(StreamPort):
             if self._args:
                 self._callback(msg, self._args[0])
             else:
-                self._callback(msg_converted)
+                if self.from_fusion:
+                    # self.parent.get_logger().info("{}".format(msg_converted))
+                    msg_obj = self.FusionedObj(json.loads(msg_converted.data))
+                    self._callback(msg_obj)
+                else:
+                    self._callback(msg_converted)
             self.msg_list.pop(0)
         else:
             pass
