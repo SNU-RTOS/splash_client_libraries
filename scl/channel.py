@@ -46,12 +46,12 @@ class StreamInputPort(StreamPort):
 
     def _check_mode_and_execute_callback(self, msg):
         if self.parent.mode == self.parent.get_current_mode():
-            self.parent.get_logger().info(msg.body)
-            self.parent.get_logger().info(msg.header.frame_id)
+            # self.parent.get_logger().info(msg.body)
+            # self.parent.get_logger().info(msg.header.frame_id)
             if msg.freshness:
-                self.parent.get_logger().info("freshness: {}".format(msg.freshness))
+                # self.parent.get_logger().info("freshness: {}".format(msg.freshness))
                 time_exec_ms = (self.parent.get_clock().now().nanoseconds - Time.from_msg(msg.header.stamp).nanoseconds) / 1000000
-                self.parent.get_logger().info("time_exec: {}".format(time_exec_ms))
+                # self.parent.get_logger().info("time_exec: {}".format(time_exec_ms))
                 if time_exec_ms > msg.freshness:
                     return
             self.msg_list.append(msg)
