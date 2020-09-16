@@ -1,3 +1,4 @@
+from .exceptions import *
 from rclpy.service import Service
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
@@ -21,8 +22,8 @@ class ModeChangeInputPort:
     def _request_register_mode(self):
         self._component.get_logger().info('Mode registration...')
         _cli = self._component.create_client(RegisterMode, '/register_splash_mode')
-        while not _cli.wait_for_service(timeout_sec=1.0):
-            self._component.get_logger().info('service not available, waiting again...')
+        if not _cli.wait_for_service(timeout_sec=1.0):
+            raise ModeManagerAbsenceException
         _req = RegisterMode.Request()
         _req.name_space = self._component.get_namespace()
         _req.factory = self._component.factory.name
@@ -36,11 +37,23 @@ class ModeChangeOutputPort:
         self._component = component
         self._factory = factory
         self._client = self._component.create_client(RequestModeChange, "/request_splash_mode_change")
+        self._event = None
+
     def trigger(self, event):
         _req = RequestModeChange.Request()
         _req.factory = self._factory
         _req.event = event
+        self._event = event
         future = self._client.call_async(_req)
+        future.add_done_callback(self.done_callback)
+        
+    def done_callback(self, future):
+        result = future.result()
+        print(result)
+        if result.ok:
+            self._component.get_logger().info("Mode request({}) service successfully done".format(self._event))
+        else:
+            raise InvalidModeChangeException("{}: invalid mode change event({})".format(self._component.name, self._event))
 
 class EventInputPort:
     def __init__(self, component, event, callback):

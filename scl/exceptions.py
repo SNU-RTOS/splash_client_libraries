@@ -44,6 +44,9 @@ class InvalidModeChangeException(DataCorruptionException):
     def __init__(self, *args):
         DataCorruptionException.__init__(self, 'Invalid mode change', *args)
 
+class ModeManagerAbsenceException(RuntimeException):
+    def __init__(self, *args):
+        RuntimeException.__init__(self, 'Mode manager absence', *args)
 
 class InvalidUsageException(SetupException):
     def __init__(self, *args):

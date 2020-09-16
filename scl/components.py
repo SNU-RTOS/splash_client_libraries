@@ -22,7 +22,7 @@ class Component(Node):
         self._event_input_ports = {}
         self._event_output_ports = {}
         self.build_unit = None
-        self.freshness = 500
+        self.freshness = None
         namespace = factory.get_namespace() if factory else ""
         self._namespace = namespace + '/' + \
             mode.lower().replace(" ", "_") if mode else namespace
@@ -200,8 +200,10 @@ class FusionOperator(Component):
             new_queue = []
             for item in queue:
                 time_exec_ms = (self.get_clock().now().nanoseconds - item["time"]) / 1000000
-                if item["freshness"] > time_exec_ms:
+                if item["freshness"] == None or item["freshness"] == 0 or item["freshness"] > time_exec_ms:
                     new_queue.append(item)
+                else:
+                    raise FreshnessConstraintViolationException('{}ms exceeded(constraint: {}ms, cur: {}ms'.format(time_exec_ms - item["freshness"], item["freshness"], time_exec_ms))
                 index = index + 1
             self._queues_for_each_input_port[c] = new_queue
         self._queues_for_each_input_port[channel].append({"message": msg_converted, "time": Time.from_msg(msg.header.stamp).nanoseconds, "freshness": msg.freshness})

@@ -1,9 +1,12 @@
 from srl.rate_controller import RateController
 from std_msgs.msg import String, Header
 from .impl.msg_converter import convert_ros_message_to_dictionary, convert_dictionary_to_ros_message
+from .exceptions import *
+
 from splash_interfaces.msg import SplashMessage
 import json
 from rclpy.time import Time
+from .exceptions import *
 
 
 
@@ -65,7 +68,7 @@ class StreamInputPort(StreamPort):
                 time_exec_ms = (self.parent.get_clock().now().nanoseconds - Time.from_msg(msg.header.stamp).nanoseconds) / 1000000
                 # self.parent.get_logger().info("time_exec: {}".format(time_exec_ms))
                 if time_exec_ms > msg.freshness:
-                    return
+                    raise FreshnessConstraintViolationException('{}ms exceeded'.format(time_exec_ms - msg.freshness))
             self.msg_list.append(msg)
             msg_decoded = json.loads(msg.body)
             msg_converted = convert_dictionary_to_ros_message(self._msg_type, msg_decoded)
@@ -93,6 +96,7 @@ class StreamOutputPort(StreamPort):
             SplashMessage, self._topic, 10)
         if self._rate_constraint > 0:
             self._rate_controller = RateController(self)
+            self._rate_controller.exception = FreshnessConstraintViolationException
 
     def set_rate_constraint(self, rate_constraint):
         self._rate_constraint = rate_constraint
@@ -107,7 +111,7 @@ class StreamOutputPort(StreamPort):
                 msg_splash.header = Header()
                 msg_splash.header.stamp = self.parent.get_clock().now().to_msg()
                 msg_splash.header.frame_id = self.parent.name
-                if self.parent.freshness:
+                if self.parent.freshness != None and self.parent.freshness != 0:
                     msg_splash.freshness = self.parent.freshness
             else:
                 msg_splash.header = source_msg.header
