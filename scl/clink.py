@@ -49,11 +49,10 @@ class ModeChangeOutputPort:
         
     def done_callback(self, future):
         result = future.result()
-        print(result)
         if result.ok:
             self._component.get_logger().info("Mode request({}) service successfully done".format(self._event))
         else:
-            raise InvalidModeChangeException("{}: invalid mode change event({})".format(self._component.name, self._event))
+            self._component.enqueue_exceptions(InvalidModeChangeException("invalid mode change event({})".format(self._event)))
 
 class EventInputPort:
     def __init__(self, component, event, callback):
@@ -61,6 +60,7 @@ class EventInputPort:
         self._event = event
         self._callback = callback
         self._service = self._component.create_service(Trigger, event, self._check_mode_and_execute_callback)
+
     def _check_mode_and_execute_callback(self, msg):
         if self._component.mode == self._component.get_current_mode():
             self._callback(msg)

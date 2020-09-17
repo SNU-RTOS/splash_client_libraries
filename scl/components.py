@@ -23,6 +23,7 @@ class Component(Node):
         self._event_output_ports = {}
         self.build_unit = None
         self.freshness = None
+        self.exceptions = []
         namespace = factory.get_namespace() if factory else ""
         self._namespace = namespace + '/' + \
             mode.lower().replace(" ", "_") if mode else namespace
@@ -35,6 +36,10 @@ class Component(Node):
             _req.factory = self.factory.name
             future = _cli.call_async(_req)
         return super().destroy_node()
+        
+    def enqueue_exceptions(self, exception):
+        self.exceptions.append(exception)
+        self.exceptions = list(set(self.exceptions))
 
     def set_current_mode(self, mode):
         self._current_mode = mode
@@ -51,7 +56,6 @@ class Component(Node):
 
     def _create_node(self):
         super().__init__(self.name, context=self.build_unit.context, namespace=self._namespace)
-        
         
     def set_links(self, links):
         self.links = links
@@ -203,7 +207,7 @@ class FusionOperator(Component):
                 if item["freshness"] == None or item["freshness"] == 0 or item["freshness"] > time_exec_ms:
                     new_queue.append(item)
                 else:
-                    raise FreshnessConstraintViolationException('{}ms exceeded(constraint: {}ms, cur: {}ms'.format(time_exec_ms - item["freshness"], item["freshness"], time_exec_ms))
+                    self.enqueue_exceptions(FreshnessConstraintViolationException('{}ms exceeded(constraint: {}ms, cur: {}ms'.format(time_exec_ms - item["freshness"], item["freshness"], time_exec_ms)))
                 index = index + 1
             self._queues_for_each_input_port[c] = new_queue
         self._queues_for_each_input_port[channel].append({"message": msg_converted, "time": Time.from_msg(msg.header.stamp).nanoseconds, "freshness": msg.freshness})

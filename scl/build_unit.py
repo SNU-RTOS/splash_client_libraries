@@ -4,6 +4,7 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_srvs.srv import Empty
+
 class BuildUnit(metaclass=Singleton):
     class ModeManagerChecker(Node):
         def __init__(self):
@@ -26,7 +27,6 @@ class BuildUnit(metaclass=Singleton):
         self.executor.add_node(self.modeManagerChecker)
 
     def run(self):
-  
         for component in self.components:
             self.executor.add_node(component)
             component.run()
@@ -35,6 +35,9 @@ class BuildUnit(metaclass=Singleton):
                 self.executor.spin_once()
                 if self.modeManagerChecker.absence:
                     raise ModeManagerAbsenceException("Please rerun splash server")
+                for component in self.components:
+                    if len(component.exceptions) > 0:
+                        raise component.exceptions.pop(0)
         except KeyboardInterrupt:
             print("KeyboardInterrupt")
             for component in self.components:
