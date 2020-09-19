@@ -12,7 +12,7 @@ class BuildUnit(metaclass=Singleton):
             self._cli = self.create_client(Empty, '/check_alive_mode_manager')
             self._req = Empty.Request()
             while not self._cli.wait_for_service(timeout_sec=1.0):
-                raise ModeManagerAbsenceException("Please run splash server")
+                self.get_logger().error("Please run splash server. waiting for 1 second...")
             self.create_timer(1, self._check_alive_mode_manager)
             self.absence = False
         def _check_alive_mode_manager(self):
@@ -34,10 +34,7 @@ class BuildUnit(metaclass=Singleton):
             while rclpy.ok():
                 self.executor.spin_once()
                 if self.modeManagerChecker.absence:
-                    raise ModeManagerAbsenceException("Please rerun splash server")
-                for component in self.components:
-                    if len(component.exceptions) > 0:
-                        raise component.exceptions.pop(0)
+                    self.modeManagerChecker.get_logger().error("Splash server is not running. Please rerun splash server")
         except KeyboardInterrupt:
             print("KeyboardInterrupt")
             for component in self.components:

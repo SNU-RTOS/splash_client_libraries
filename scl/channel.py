@@ -68,7 +68,7 @@ class StreamInputPort(StreamPort):
                 time_exec_ms = (self.parent.get_clock().now().nanoseconds - Time.from_msg(msg.header.stamp).nanoseconds) / 1000000
                 # self.parent.get_logger().info("time_exec: {}".format(time_exec_ms))
                 if time_exec_ms > msg.freshness:
-                    raise FreshnessConstraintViolationException('{}ms exceeded'.format(time_exec_ms - msg.freshness))
+                    self.get_logger.warn('{}ms exceeded(constraint: {}ms, cur: {}ms'.format(time_exec_ms - msg.freshness, msg.freshness, time_exec_ms))
             self.msg_list.append(msg)
             msg_decoded = json.loads(msg.body)
             msg_converted = convert_dictionary_to_ros_message(self._msg_type, msg_decoded)

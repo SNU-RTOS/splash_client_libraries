@@ -23,7 +23,8 @@ class ModeChangeInputPort:
         self._component.get_logger().info('Mode registration...')
         _cli = self._component.create_client(RegisterMode, '/register_splash_mode')
         if not _cli.wait_for_service(timeout_sec=1.0):
-            raise ModeManagerAbsenceException
+            # raise ModeManagerAbsenceException
+            self._component.get_logger().error("Splash server is not running. Please rerun splash server")
         _req = RegisterMode.Request()
         _req.name_space = self._component.get_namespace()
         _req.factory = self._component.factory.name
@@ -46,13 +47,14 @@ class ModeChangeOutputPort:
         self._event = event
         future = self._client.call_async(_req)
         future.add_done_callback(self.done_callback)
+        return future
         
     def done_callback(self, future):
         result = future.result()
         if result.ok:
-            self._component.get_logger().info("Mode request({}) service successfully done".format(self._event))
+            self._component.get_logger().info("Mode change({}) service successfully done".format(self._event))
         else:
-            self._component.enqueue_exceptions(InvalidModeChangeException("invalid mode change event({})".format(self._event)))
+            self._component.get_logger().error("invalid mode change event: {}".format(self._event))
 
 class EventInputPort:
     def __init__(self, component, event, callback):
@@ -76,3 +78,5 @@ class EventOutputPort:
     def trigger(self):
         _req = Trigger.Request()
         future = self._client.call_async(_req)
+        return future
+            
