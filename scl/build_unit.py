@@ -1,7 +1,9 @@
 from .impl.singleton import Singleton
 from .exceptions import ModeManagerAbsenceException, InvalidModeChangeException
+from .executor import SplashExecutor
+
 import rclpy
-from rclpy.executors import MultiThreadedExecutor
+
 from rclpy.node import Node
 from std_srvs.srv import Empty
 
@@ -21,7 +23,7 @@ class BuildUnit(metaclass=Singleton):
 
     def __init__(self):
         self.context = rclpy.init()
-        self.executor = MultiThreadedExecutor()
+        self.executor = SplashExecutor()
         self.components = []
         self.modeManagerChecker = self.ModeManagerChecker()
         self.executor.add_node(self.modeManagerChecker)
