@@ -1,8 +1,10 @@
 import rclpy
-
+# from .executor import SplashExecutor
+from rclpy.executors import MultiThreadedExecutor as SplashExecutor
 class BuildUnit:
-    def __init__(self):
-
+    def __init__(self, name):
+        self.name = name
+        self.context = rclpy.init()
         self._components_list = []
         self._executor = SplashExecutor()
 
