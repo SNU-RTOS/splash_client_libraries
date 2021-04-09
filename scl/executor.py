@@ -1,4 +1,4 @@
-from rclpy.executors import Executor, ExternalShutdownException, ShutdownException, TimeoutException
+from rclpy.executors import Executor, ShutdownException, TimeoutException
 from rclpy.context import Context
 from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
@@ -69,8 +69,6 @@ class SplashExecutor(Executor):
             # print("handler", handler)
             # print("entity", entity)
             # print("node", node)
-        except ExternalShutdownException:
-            pass
         except ShutdownException:
             pass
         except TimeoutException:
