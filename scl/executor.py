@@ -34,11 +34,14 @@ from rclpy.signals import SignalHandlerGuardCondition
 from rclpy.subscription import Subscription
 from rclpy.task import Future
 from rclpy.task import Task
-from rclpy.timer import Timer
+from rclpy.timer import WallTimer
 from rclpy.utilities import get_default_context
 from rclpy.utilities import timeout_sec_to_nsec
 from rclpy.waitable import NumberOfEntities
 from rclpy.waitable import Waitable
+
+from scl.ports import StreamInputPort, EventInputPort, ModeChangePort
+from scl.components import Component
 
 class SplashExecutor(Executor):
     def __init__(self, num_threads: int = None, *, context: Context = None) -> None:
@@ -50,65 +53,18 @@ class SplashExecutor(Executor):
                 print("thread is 1")
                 num_threads = 1
         self._executor = ThreadPoolExecutor(num_threads)
-        # self.hp_executor = ThreadPoolExecutor(max_workers=os.cpu_count() or 4) #haya
-        # self.lp_executor = ThreadPoolExecutor(max_workers=1) #haya
-        # self.high_priority_nodes = set() #haya
-        self._nodes_priority: Set[Node] = set()
-        # self._nodes_priority2: Set[Node] = set()
 
-    # def add_high_priority_node(self, node): #haya
-    #     self.high_priority_nodes.add(node)
-    #     # add_node inherited
-    #     self.add_node(node)
-    
-    def spin_once_priority(self, timeout_sec: float = None) -> None:
-        # print("0")
+    def spin_once(self, timeout_sec: float = None) -> None:
         try:
-            # print("1")
-            handler, entity, node = self.wait_for_ready_callbacks_priority(timeout_sec=timeout_sec)
-            # print("handler", handler)
-            # print("entity", entity)
-            # print("node", node)
+            handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
         except ShutdownException:
             pass
         except TimeoutException:
             pass
         else:
-            # print("2")
-            # handler()
-            # if handler.exception() is not None:
-            #     raise handler.exception()
             self._executor.submit(handler)
-            # if node in self.high_priority_nodes: #haya
-            #     print("tlqkf")
-            #     self.hp_executor.submit(handler)
-            # else:
-            #     print("shit")
-            #     self.lp_executor.submit(handler)
 
-    def add_node_priority(self, node: 'Node') -> bool:
-        """
-        Add a node whose callbacks should be managed by this executor.
-
-        :param node: The node to add to the executor.
-        :return: ``True`` if the node was added, ``False`` otherwise.
-        """
-        with self._nodes_lock:
-            if node not in self._nodes_priority:
-                # self._nodes.add(node)
-                self._nodes_priority.add(node)
-                node.executor = self 
-                # Rebuild the wait set so it includes this new node
-                self._guard.trigger()
-                return True
-            return False
-
-    def get_nodes_priority(self) -> List['Node']:
-        """Return nodes that have been added to this executor."""
-        with self._nodes_lock:
-            return list(self._nodes_priority)
-
-    def wait_for_ready_callbacks_priority(self, *args, **kwargs) -> Tuple[Task, WaitableEntityType, 'Node']:
+    def wait_for_ready_callbacks(self, *args, **kwargs) -> Tuple[Task, WaitableEntityType, 'Node']:
         """
         Return callbacks that are ready to be executed.
 
@@ -123,7 +79,7 @@ class SplashExecutor(Executor):
                 # Create a new generator
                 self._last_args = args
                 self._last_kwargs = kwargs
-                self._cb_iter = self._wait_for_ready_callbacks_priority(*args, **kwargs)
+                self._cb_iter = self._wait_for_ready_callbacks(*args, **kwargs)
 
             try:
                 return next(self._cb_iter)
@@ -131,7 +87,20 @@ class SplashExecutor(Executor):
                 # Generator ran out of work
                 self._cb_iter = None
 
-    def _wait_for_ready_callbacks_priority(
+    def get_active_nodes(self) -> List['Node']:
+        with self._nodes_lock:
+            active_nodes = []
+            for node in self._nodes:
+                if isinstance(node, Component):
+                    if node.is_active:
+                        active_nodes.append(node)
+                    else:
+                        continue
+                else:
+                    active_nodes.append(node)
+            return list(active_nodes)
+    
+    def _wait_for_ready_callbacks(
         self,
         timeout_sec: float = None,
         nodes: List['Node'] = None,
@@ -155,19 +124,15 @@ class SplashExecutor(Executor):
         # print("timeout_sec", timeout_sec)
         # print("timeout_nsec", timeout_nsec)
         if timeout_nsec > 0:
-            timeout_timer = Timer(None, None, timeout_nsec, self._clock, context=self._context)
+            timeout_timer = WallTimer(None, None, timeout_nsec, self._clock, context=self._context)
 
         yielded_work = False
         while not yielded_work and not self._is_shutdown and not condition():
             # Refresh "all" nodes in case executor was woken by a node being added or removed
             nodes_to_use = nodes
             if nodes is None:
-                nodes_to_use = self.get_nodes()
-
-            nodes_to_use_priority = nodes
-            if nodes is None:
-                nodes_to_use_priority = self.get_nodes_priority()
-            print("nodes_to_use_priority", nodes_to_use_priority)
+                # nodes_to_use = self.get_nodes()
+                nodes_to_use = self.get_active_nodes()
 
             # Yield tasks in-progress before waiting for new work
             tasks = None
@@ -186,7 +151,7 @@ class SplashExecutor(Executor):
             # Gather entities that can be waited on
             subscriptions: List[Subscription] = []
             guards: List[GuardCondition] = []
-            timers: List[Timer] = []
+            timers: List[WallTimer] = []
             clients: List[Client] = []
             services: List[Service] = []
             waitables: List[Waitable] = []
@@ -207,8 +172,6 @@ class SplashExecutor(Executor):
                         gc.trigger()
                     guards.append(gc)
 
-
-
         
 
             if timeout_timer is not None:
@@ -219,8 +182,6 @@ class SplashExecutor(Executor):
 
             entity_count = NumberOfEntities(
                 len(subscriptions), len(guards), len(timers), len(clients), len(services))
-            print(entity_count)
-
             for waitable in waitables:
                 entity_count += waitable.get_num_entities()
 
@@ -261,7 +222,6 @@ class SplashExecutor(Executor):
                     except InvalidHandle:
                         entity_count.num_guard_conditions -= 1
 
-                context_capsule = context_stack.enter_context(self._context.handle)
                 _rclpy.rclpy_wait_set_init(
                     wait_set,
                     entity_count.num_subscriptions,
@@ -270,21 +230,12 @@ class SplashExecutor(Executor):
                     entity_count.num_clients,
                     entity_count.num_services,
                     entity_count.num_events,
-                    context_capsule)
-                # print("haya")
-                # print(entity_count.num_timers)
-                # print(entity_count.num_subscriptions)
-                # print(entity_count.num_clients)
-                # print(wait_set)
-                # print(context_capsule)
-                # print("haya_tlqkf")
+                    self._context.handle)
 
                 _rclpy.rclpy_wait_set_clear_entities(wait_set)
                 for sub_capsule in sub_capsules:
-                    # print('tlqkf!!!!!!')
                     _rclpy.rclpy_wait_set_add_entity('subscription', wait_set, sub_capsule)
                 for cli_capsule in client_capsules:
-                    # print('tlqkf!!!!!!')
                     _rclpy.rclpy_wait_set_add_entity('client', wait_set, cli_capsule)
                 for srv_capsule in service_capsules:
                     _rclpy.rclpy_wait_set_add_entity('service', wait_set, srv_capsule)
@@ -323,128 +274,10 @@ class SplashExecutor(Executor):
                             handler = self._make_handler(
                                 wt, node, lambda e: e.take_data(), self._execute_waitable)
                             yielded_work = True
-                            print('tlqkf!!!!!!')
-                            # print(node)
                             yield handler, wt, node
-
-            # # haya
-            # # priority based scheduling 
-            # ####################### 1 #########################
-            # # 0. initialization
-            # # print('nodes: ', nodes)
-            # # print('nodes_to_use: ', nodes_to_use)
-            # # print('nodes: ', list(nodes))
-            # # print('before: ', subs_ready)
-            # # 1. node interface
-            # interface_set = 0
-            # # interface_set = []
-            # for node in nodes_to_use:
-            #     for sub in node.subscriptions:    
-            #         if sub.handle.pointer in subs_ready:   
-            #             if "SourceLinearX" in str(node): # haya hard cording to be chaged
-            #                 print('digh!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-            #                 print('pointer of SourceLinearX: ', sub.handle.pointer)
-            #                 interface_set = sub.handle.pointer
-            #                 # print('pointer2: ', interface_set)
-
-            # # 2. get priority_set
-            # print('before: ', subs_ready)
-            # priority_set = []
-            # remain_set = []
-            # for idx in range(len(subs_ready)):
-            #     # print('idx: ', idx)
-            #     if interface_set == subs_ready[idx]:
-            #         # print('A')
-            #         priority_set.append(subs_ready[idx])
-            #     else:
-            #         # print('B')
-            #         remain_set.append(subs_ready[idx])
-            # # 3. re-sort subs_ready based on priority_set
-            # # print('priority_set: ', priority_set)
-            # # print('remain_set: ',remain_set)
-            # subs_ready = priority_set + remain_set
-            # print('after: ', subs_ready)
-            # if len(subs_ready) > 0:
-            #     print('subs_ready[0]: ', subs_ready[0])
-
-            ############################### 2 ##########################
-            # print('before: ', nodes_to_use)
-            # print('before: ', subs_ready)
-            # priority_set = []
-            # remain_set = []
-            # for idx in range(len(nodes_to_use)):
-            #     if "SourceLinearX" in str(nodes_to_use[idx]): # haya hard cording to be chaged
-            #         priority_set.append(nodes_to_use[idx])
-            #     else:
-            #         remain_set.append(nodes_to_use[idx])
-            # nodes_to_use = priority_set + remain_set
-            # # print('after: ', nodes_to_use)
-            # # print('after: ', subs_ready)
-
-
-
-            # wooyoung 1st attempt start
-            # temp1 = []
-            # temp2 = []
-            # temp3 = []
-            # number = 0
-            # for node in nodes_to_use:
-            #     print('!!!!!!!!!!!!!!!!!!!!!')
-            #     print('number ', number)
-            #     number=number+1
-            #     print("BEFORE: ", node.woo())
-            #     for sub in node.subscriptions:
-            #         # if sub.handle.pointer in subs_ready:
-            #             if "source_d" in str(sub.topic):
-            #                 temp1.append(sub)
-            #                 print("?????????FINDFINDFINDFIND?????????", sub)
-            #             else:
-            #                 temp2.append(sub)
-            #     temp3.extend(temp1+temp2) 
-            #     print("TEMP3: ", temp3)
-            #     node.woo2(temp3)  
-            #     temp1.clear()
-            #     temp2.clear()
-            #     temp3.clear()             
-            #     print("AFTER: ", node.woo())
-            # wooyoung 1st attempt end 
-            
-            # wooyoung 2nd attempt start
-            temp1 = []
-            temp2 = []
-
-            number = 0
             for node in nodes_to_use:
-                print('!!!!!!!!!!!!!!!!!!!!!')
-                print('number ', number)
-                number=number+1
-                print("BEFORE: ", node.woo())
-                for sub in node.subscriptions:
-                    # if sub.handle.pointer in subs_ready:
-                        if "source_d" in str(sub.topic):
-                            temp1.append(sub)
-                        else:
-                            temp2.append(sub)
-            
-            # wooyoung 2nd attempt end 
-
-            for node in nodes_to_use:
-                # haya_sub = haya_sub + 1
-                # print("2: ", haya_sub)
-                # print(node)
-                # print(nodes_to_use)
-                haya_sub_sub = 0
                 for tmr in node.timers:
-                    # haya_sub_sub = haya_sub_sub + 1
-                    # print("3: ", haya_sub_sub)
-                    # print(node)
-                    # print(node.timers)
-                    # print(tmr)
                     if tmr.handle.pointer in timers_ready:
-                        # print('tmr')
-                        # print(timers_ready)
-                        # print(tmr)
-                        # print(tmr.handle.pointer)
                         with tmr.handle as capsule:
                             # Check timer is ready to workaround rcl issue with cancelled timers
                             if _rclpy.rclpy_is_timer_ready(capsule):
@@ -452,73 +285,58 @@ class SplashExecutor(Executor):
                                     handler = self._make_handler(
                                         tmr, node, self._take_timer, self._execute_timer)
                                     yielded_work = True
-                                    # print('tlqkf1')
-                                    # print(handler)
-                                    # print(tmr)
-                                    # print(node)
                                     yield handler, tmr, node
             for node in nodes_to_use:
-                for sub in node.subscriptions:
-                    if sub in temp1:
+                if isinstance(node, Component):
+                    for port in node.event_input_ports.values():
+                        if port.subscription.handle.pointer in subs_ready:
+                            if port.subscription.callback_group.can_execute(port.subscription):
+                                handler = self._make_handler(port.subscription, node, self._take_subscription, self._execute_subscription)
+                                yield_work = True
+                                yield handler, port.subscription, node
+            
+            for node in nodes_to_use:
+                if isinstance(node, Component):
+                    for port in node.stream_input_ports.values():
+                        if port.subscription.handle.pointer in subs_ready:
+                            if port.subscription.callback_group.can_execute(port.subscription):
+                                handler = self._make_handler(port.subscription, node, self._take_subscription, self._execute_subscription)
+                                yield_work = True
+                                yield handler, port.subscription, node
+            
+            for node in nodes_to_use:
+                if not isinstance(node, Component):
+                    for sub in node.subscriptions:
                         if sub.handle.pointer in subs_ready:
                             if sub.callback_group.can_execute(sub):
                                 handler = self._make_handler(sub, node, self._take_subscription, self._execute_subscription)
                                 yielded_work = True
                                 yield handler, sub, node
-            start = time.time()                    
-            for node in nodes_to_use:                               
-                for sub in node.subscriptions:
-                    if sub in temp2:
-                        if sub.handle.pointer in subs_ready:
-                            if sub.callback_group.can_execute(sub):
-                                handler = self._make_handler(sub, node, self._take_subscription, self._execute_subscription)
-                                yielded_work = True
-                                yield handler, sub, node
-            print("!!!!!!!!TIME!!!!!!!!!!: ", (time.time()-start)*1000)                                          
 
             for node in nodes_to_use:
                 for gc in node.guards:
-                    # print(node)
                     if gc._executor_triggered:
                         if gc.callback_group.can_execute(gc):
                             handler = self._make_handler(
                                 gc, node, self._take_guard_condition,
                                 self._execute_guard_condition)
                             yielded_work = True
-                            # print('tlqkf3')
-                            # print(node)
                             yield handler, gc, node
             for node in nodes_to_use:
                 for client in node.clients:
-                    # print(node)
                     if client.handle.pointer in clients_ready:
-                        # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&")
-                        # print("client")
-                        # print(clients_ready)
-                        # print(client.handle.pointer)
                         if client.callback_group.can_execute(client):
                             handler = self._make_handler(
                                 client, node, self._take_client, self._execute_client)
                             yielded_work = True
-                            # print('tlqkf4')
-                            # print(node)
-                            # print('----------------------------------')
                             yield handler, client, node
             for node in nodes_to_use:
                 for srv in node.services:
-                    # print(node)
                     if srv.handle.pointer in services_ready:
-                        # print("&&&&&&&&&&&&&&&&&&&&&&&&&&&")
-                        # print("services")
-                        # print(services_ready)
-                        # print(srv.handle.pointer)
                         if srv.callback_group.can_execute(srv):
                             handler = self._make_handler(
                                 srv, node, self._take_service, self._execute_service)
                             yielded_work = True
-                            # print('tlqkf5')
-                            # print(node)
-                            # print('----------------------------------')
                             yield handler, srv, node
 
             # Check timeout timer

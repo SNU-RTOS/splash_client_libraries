@@ -1,7 +1,10 @@
 from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
+from rclpy.time import Time
+
 from std_msgs.msg import String, Header
 from splash_interfaces.msg import SplashMessage, ModeChange
+from srl.rate_control import RateController
 
 import pickle
 import time
@@ -12,7 +15,7 @@ class StreamInputPort:
         self.msg_type = msg_type
         self.channel = channel
         self.callback = callback
-        self.subscription = self.component.create_subscription(SplashMessage, self.channel, self._execute_callback, 10)
+        self.subscription = self.component.create_subscription(SplashMessage, self.channel, self._execute_callback, 10, callback_group=self.component.callback_group)
         self.msg_list = []
     
     def _execute_callback(self, msg):
@@ -29,16 +32,22 @@ class StreamOutputPort:
         self.channel = channel
         self.rate = rate
         self.publisher = self.component.create_publisher(SplashMessage, self.channel, 10)
-        
+        if self.rate:
+            self.rate_controller = RateController(self)
     def write(self, msg):
-        self.publisher.publish(msg)
+        if self.rate:
+            self.rate_controller.push(msg)
+        else:
+            time_exec_ms = (self.component.get_clock().now().nanoseconds - Time.from_msg(msg.header.stamp).nanoseconds) / 1000000
+            if msg.freshness_constraint == 0 or time_exec_ms < msg.freshness_constraint:
+                self.publisher.publish(msg)
 
 class EventInputPort:
     def __init__(self, component, name, event, callback):
         self.component = component
         self.name = name
         self.event = event
-        self.subscription = self.component.create_subscription(String, self.event, self._execute_callback, 10)
+        self.subscription = self.component.create_subscription(String, self.event, self._execute_callback, 10, callback_group=self.component.callback_group)
         self.callback = callback
 
     def _execute_callback(self, msg):
@@ -56,12 +65,11 @@ class EventOutputPort:
         self.publisher.publish(msg)
     
 class ModeChangePort:
-    def __init__(self, component, name, factory, event):
+    def __init__(self, component, name, factory):
         self.component = component
         self.name = name
         self.factory = factory
-        self.event = event
-        self.publisher = self.component.create_publisher(String, self.event, 10)
+        self.publisher = self.component.create_publisher(ModeChange, 'splash_modechange', 10)
 
     def trigger(self, event):
         msg = ModeChange()
