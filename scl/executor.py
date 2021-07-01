@@ -52,7 +52,7 @@ class SplashExecutor(Executor):
             except NotImplementedError:
                 print("thread is 1")
                 num_threads = 1
-        self._executor = ThreadPoolExecutor(num_threads)
+        self._executor = ThreadPoolExecutor(1)
 
     def spin_once(self, timeout_sec: float = None) -> None:
         try:
@@ -305,13 +305,12 @@ class SplashExecutor(Executor):
                                 yield handler, port.subscription, node
             
             for node in nodes_to_use:
-                if not isinstance(node, Component):
-                    for sub in node.subscriptions:
-                        if sub.handle.pointer in subs_ready:
-                            if sub.callback_group.can_execute(sub):
-                                handler = self._make_handler(sub, node, self._take_subscription, self._execute_subscription)
-                                yielded_work = True
-                                yield handler, sub, node
+                for sub in node.subscriptions:
+                    if sub.handle.pointer in subs_ready:
+                        if sub.callback_group.can_execute(sub):
+                            handler = self._make_handler(sub, node, self._take_subscription, self._execute_subscription)
+                            yielded_work = True
+                            yield handler, sub, node
 
             for node in nodes_to_use:
                 for gc in node.guards:

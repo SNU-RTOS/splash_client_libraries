@@ -91,7 +91,7 @@ class ProcessingComponent(Component):
 
         port = self.stream_output_ports[channel]
 
-        if caller_name == port.callback.__name__:
+        if hasattr(port, 'callback') and caller_name == port.callback.__name__:
             source_msg = port.msg_list[0]
 
         splash_msg = SplashMessage()
@@ -196,13 +196,18 @@ class FusionOperator(Component):
     ):
         mandatory_port_objs = []
         optional_port_objs = []
-
-        for channel in mandatory_ports:
-            mandatory_port_objs.append(self.stream_input_ports[channel])
-        for channel in optional_ports:
-            optional_port_objs.append(self.stream_input_ports[channel])
-        
+        for mport in mandatory_ports:
+            for port in self.stream_input_ports.values():
+                if(port.name == mport):
+                    mandatory_port_objs.append(port)
+                    break
+        for oport in optional_ports:
+            for port in self.stream_input_ports.values():
+                if(port.name == oport):
+                    optional_port_objs.append(port)
+                    break
         self.fusion_rule = FusionRule(mandatory_port_objs, optional_port_objs, optional_ports_threshold, correlation_constraint)
+
         for channel in self.stream_input_ports.keys():
             self.queues_for_input_ports[channel] = []
 

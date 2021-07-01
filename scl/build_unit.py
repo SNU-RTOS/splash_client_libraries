@@ -18,7 +18,6 @@ class BuildUnit:
         self._executor.add_node(self._mode_manager)
         for component in self._components.values():
             self._executor.add_node(component)
-        
         try:
             while rclpy.ok():
                 self._executor.spin_once()
@@ -30,9 +29,12 @@ class BuildUnit:
 
     def configure_modechange(self, factory, modechange_configuration):
         self._mode_manager.set_modechange_configuration(factory, modechange_configuration)
-    
+        for mode in self._mode_manager.configuration_map[factory]['mode_list']:
+            if mode["name"] == self._mode_manager.configuration_map[factory]["initial_mode"]:
+                for component in mode["components"]:
+                    self._components[component].activate()
     def _modechange_handler(self, factory, next_mode):
-        print(next_mode)
+        print("mode change: ", next_mode)
         for mode in self._mode_manager.configuration_map[factory]['mode_list']:
             if mode["name"] == next_mode:
                 for component in mode["components"]:
